@@ -35,7 +35,7 @@ type Broker struct {
 	Portfolio map[Symbol][]Position
 	Cash float64
 	Commisions Comissions
-	CurrentData MarketData
+	CurrentData map[Symbol]Candle
 	Hooks Hooks
 }
 
@@ -48,7 +48,7 @@ func (b Broker) GetPositions(sym Symbol) ([]Position, bool){
 }
 
 func (b Broker) lookUpSymbolCandle(sym Symbol) (Candle, bool) {
-	candle, f := b.CurrentData.SymbolData[sym]
+	candle, f := b.CurrentData[sym]
 	if !f {
 		return Candle{}, false
 	}
@@ -133,15 +133,15 @@ func (b *Broker) closePosition(pos Position) {
 func(b *Broker) Next() {
 	for s, positions := range b.Portfolio {
 		for _, pos := range positions {
-			if pos.StopLossPrice <= b.CurrentData.SymbolData[s].Price {
+			if pos.StopLossPrice <= b.CurrentData[s].Price{
 				b.closePosition(pos)
-			} else if pos.TakeProfitPrice >= b.CurrentData.SymbolData[s].Price {
+			} else if pos.TakeProfitPrice >= b.CurrentData[s].Price {
 				b.closePosition(pos)
 			}
 		}
 	}
 	for ordIdx, ord := range b.Orders {
-		if ord.BuyPrice >= b.CurrentData.SymbolData[ord.Sym].Price {
+		if ord.BuyPrice >= b.CurrentData[ord.Sym].Price {
 			err := b.openPosition(ord)
 			if err != nil {
 				b.Hooks.OnError(err)

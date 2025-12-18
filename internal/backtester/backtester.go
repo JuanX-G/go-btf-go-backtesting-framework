@@ -55,6 +55,6 @@ type Candle struct {
 }
 
 type MarketData struct {
-	SymbolData map[Symbol]Candle
+	Candles []Candle
 }
 
