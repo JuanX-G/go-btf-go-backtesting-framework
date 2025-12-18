@@ -6,6 +6,7 @@ import (
 	"os"
 	"go-backtesting-framework/internal/datafeed"
 	defaultHooks"go-backtesting-framework/internal/defaultLoggingHooks"
+	"go-backtesting-framework/internal/indicators"
 )
 
 const STARTING_CASH = 10000.0
@@ -60,45 +61,6 @@ func(s *myStrategy) BrokerNext() {
 	s.broker.Next()
 }
 
-func Sma(dt []tester.Candle, period, currIdx int) (float64, error) {
-	 if period - 1 > len(dt) {
-		return 0, fmt.Errorf("period too big")
-	}
-	runningTotal := 0.0
-	for i := 0; i <= period; i++ {
-		runningTotal += dt[currIdx - i].Price
-	}
-	avg := runningTotal / float64(period)
-	return avg, nil
-}
-
-func EMA(dt []tester.Candle, period, currIdx int) (float64, error){
-	if period - 1 > len(dt) {
-		return 0, fmt.Errorf("period too big")
-	}
-	if currIdx < period {
-		return 0, fmt.Errorf("period too big")
-	}
-	multiplier := 2/(period + 1)
-	var prevEma float64
-	itrc := 0
-	fmt.Println("curIdx", currIdx)
-	fmt.Println("curr - period", currIdx - period)
-	for i := currIdx - period; i <= currIdx; i++ {
-		if itrc == 0 { 
-		     startingPoint, err := Sma(dt, period, currIdx)
-		     if err != nil {
-		     	return 0, err
-		     }
-		     currPrice := dt[period].Price
-		     prevEma = (currPrice - startingPoint) * float64(multiplier) + startingPoint
-		}
-		currPrice := dt[i].Price 
-		prevEma = (currPrice - prevEma) * float64(multiplier) + prevEma
-		itrc++
-	}
-	return prevEma, nil
-}
 
 func(s *myStrategy) Eval() {
 	currDtIndex := s.iteration
@@ -106,14 +68,19 @@ func(s *myStrategy) Eval() {
 		return
 	}
 	for symName, candle := range s.broker.CurrentData {
-		ema16, err := EMA(s.data[symName], 16, s.iteration)
+		ema16, err := indicators.EMA(s.data[symName], 16, s.iteration)
 		if err != nil {
 			continue
 		}
-		ema120, err := EMA(s.data[symName], 120, s.iteration)
+		ema120, err := indicators.EMA(s.data[symName], 120, s.iteration)
 		if err != nil {
 			continue
 		}
+		macd, err := indicators.MACD(s.data[symName], 26, 12, 9, s.iteration)
+		if err != nil {
+			continue
+		}
+		fmt.Println(macd.PrettyString())
 		if ema16 > ema120 * 1.04 {
 			positionsForSym, _ := s.broker.Portfolio[symName] 
 			fmt.Println("LEN POSITIONS:", len(positionsForSym))
@@ -144,7 +111,6 @@ func main() {
 	dtMap := make(map[tester.Symbol][]tester.Candle)
 	dtMap[msftSymbol] = msftCandles
 	myData = dtMap 
-	fmt.Println("Hello!")
 	var strat myStrategy
 	tester.TestLoopStart(&strat)
 }
