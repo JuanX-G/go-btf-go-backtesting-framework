@@ -46,7 +46,15 @@ type Comissions struct {
 	SellComission float64
 }
 
+type Candle struct {
+	Price float64
+	Close  float64
+	High float64
+	Low float64
+	Volume float64
+}
+
 type MarketData struct {
-	SymbolData map[Symbol]float64
+	SymbolData map[Symbol]Candle
 }
 
