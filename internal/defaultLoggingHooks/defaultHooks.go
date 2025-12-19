@@ -8,9 +8,9 @@ import (
 func DefOnOpenHook(pos tester.Position, tInfo tester.BuyTransactionInfo) {
 	fmt.Printf("Position on symbol: %s opened\nOf size: %f \nAt price: %f\ntransaction sum is: %f\nComission: %f\n", pos.Sym.Name, pos.OpenPrice, pos.Size, tInfo.CashOutflow, tInfo.ComissiosSum)
 }
-var myData []tester.MarketData;
 func DefOnClosedHook(pos tester.Position, tInfo tester.SellTransactionInfo) {
-	fmt.Printf("Position on symbol: %s opened\nOf size: %f \nAt price: %f\ntransaction sum is: %f\nComission: %f\n", pos.Sym.Name, pos.OpenPrice, pos.Size, tInfo.CashInflow, tInfo.ComissiosSum)
+	fmt.Printf("Position on symbol: %s closed\nOf size: %f \nAt price: %f\ntransaction sum is: %f\nSell Price: %f\nComission: %f\n", pos.Sym.Name, pos.Size, pos.OpenPrice, tInfo.CashInflow, tInfo.Price, tInfo.ComissiosSum)
+	fmt.Println("profit of: ", (tInfo.Price - pos.OpenPrice)*pos.Size) //TODO: remove
 }
 func DefOnNextHook(currDt tester.CurrentSimulationData) {
 	fmt.Printf("Current state:\nCash: %f\nCurrent positions: %#v\nCurrent orders: %#v\n", currDt.Cash, currDt.Portfolio, currDt.Orders)

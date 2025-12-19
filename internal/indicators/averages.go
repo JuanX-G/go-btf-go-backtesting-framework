@@ -80,32 +80,55 @@ type MACDdata struct  {
 	LongEma float64
 	MACDval float64
 	Signal float64
+	Hist float64
 }
 
 func(m MACDdata) PrettyString() string {
 	return fmt.Sprintf("Long EMA: %f\nShort EMA: %f\nSignal EMA: %f\nMACD: %f", m.LongEma, m.ShortEma, m.Signal, m.MACDval)
 }
 
-func MACD(dt []tester.Candle, shortPeriod, longPeriod, signalPeriod, currIdx int) (MACDdata, error) { 
-	var macds []float64
-	var shortEma float64
-	var longEma float64
-	var macd float64
-	for i := signalPeriod; i >= 0; i-- {
-		shortEma, err := EMA(dt, shortPeriod, currIdx - i)
-		if err != nil {
-			return MACDdata{}, err 
-		}
-		longEma, err = EMA(dt, longPeriod, currIdx - i)
-		if err != nil {
-			return MACDdata{}, err 
-		}
-		macd = shortEma - longEma
-		macds = append(macds, macd)
+func MACD(dt []tester.Candle, shortPeriod, longPeriod, signalPeriod, currIdx int) (MACDdata, error) {
+
+	minBars := longPeriod + signalPeriod
+	if currIdx < minBars {
+		return MACDdata{}, fmt.Errorf("not enough data")
 	}
-	signal, err := RawEMA(macds)
+
+	alphaShort := 2.0 / (float64(shortPeriod) + 1)
+	alphaLong := 2.0 / (float64(longPeriod) + 1)
+	alphaSig := 2.0 / (float64(signalPeriod) + 1)
+
+	// Initialize EMAs using SMA
+	shortEMA, err := SMA(dt, shortPeriod, currIdx-longPeriod-signalPeriod)
 	if err != nil {
-		return MACDdata{}, err 
+		return MACDdata{}, err
 	}
-	return MACDdata{ShortEma: shortEma, LongEma: longEma, MACDval: macd, Signal: signal}, nil
+	longEMA, err  := SMA(dt, longPeriod,  currIdx-longPeriod-signalPeriod)
+	if err != nil {
+		return MACDdata{}, err
+	}
+	signal := 0.0
+
+	for i := currIdx - longPeriod - signalPeriod + 1; i <= currIdx; i++ {
+
+		price := dt[i].Close
+
+		shortEMA += alphaShort * (price - shortEMA)
+		longEMA  += alphaLong  * (price - longEMA)
+
+		macd := shortEMA - longEMA
+		signal += alphaSig * (macd - signal)
+	}
+
+	macd := shortEMA - longEMA
+	hist := macd - signal
+
+	return MACDdata{
+		ShortEma: shortEMA,
+		LongEma:  longEMA,
+		MACDval:  macd,
+		Signal:   signal,
+		Hist:     hist,
+	}, nil
 }
+

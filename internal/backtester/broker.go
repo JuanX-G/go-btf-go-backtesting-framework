@@ -6,7 +6,7 @@ import (
 )
 
 type SellTransactionInfo struct {
-	price float64
+	Price float64
 	CashInflow float64
 	ComissiosSum float64
 }
@@ -123,7 +123,7 @@ func (b *Broker) closePosition(pos Position) {
 	}
 	if b.Hooks.OnPositionClosed != nil {
 		b.Hooks.OnPositionClosed(pos, SellTransactionInfo{
-			price: candle.Price,
+			Price: candle.Price,
 			CashInflow: SellInflow,
 			ComissiosSum: comission,
 		})
@@ -133,9 +133,11 @@ func (b *Broker) closePosition(pos Position) {
 func(b *Broker) Next() {
 	for s, positions := range b.Portfolio {
 		for _, pos := range positions {
-			if pos.StopLossPrice <= b.CurrentData[s].Price{
+			if pos.StopLossPrice >= b.CurrentData[s].Price{
+				fmt.Println("DDD", pos)
+				fmt.Println(b.CurrentData[s].Price)
 				b.closePosition(pos)
-			} else if pos.TakeProfitPrice >= b.CurrentData[s].Price {
+			} else if pos.TakeProfitPrice <= b.CurrentData[s].Price {
 				b.closePosition(pos)
 			}
 		}
