@@ -2,6 +2,7 @@ package backtester
 
 import (
 	"fmt"
+	"go-backtesting-framework/internal/portfolioIndicators"
 	sliceUtils "go-backtesting-framework/internal/sliceUtils"
 )
 
@@ -37,6 +38,8 @@ type Broker struct {
 	Commisions Comissions
 	CurrentData map[Symbol]Candle
 	Hooks Hooks
+	nextPositionID int64
+	PortfolioData portfolioIndicators.PortfolioData
 }
 
 func (b Broker) GetPositions(sym Symbol) ([]Position, bool){
@@ -73,21 +76,28 @@ func (b *Broker) SubmitOrder(order Order) error {
 }
 
 func (b *Broker) openPosition(ord Order) error {
+	b.nextPositionID++
 	pos := Position{ 
 		Sym: ord.Sym,
-		OpenPrice: ord.SubmissionPrice,
 		TakeProfitPrice: ord.TakeProfitPrice,
 		StopLossPrice: ord.StopLossPrice,
 		Size: ord.Size,
+		ID: b.nextPositionID,
 	}
-	cost := ord.Size * pos.OpenPrice
+	price := b.CurrentData[ord.Sym].Price
+	cost := ord.Size * price
+
 	comission := cost * b.Commisions.BuyComission
 	cost = cost + comission
+	pos.OpenPrice = price
 	if cost > b.Cash {
 		return fmt.Errorf("not enough cash")
 	}
 	b.Cash -= cost
 	b.Portfolio[ord.Sym] = append(b.Portfolio[ord.Sym], pos)
+	if b.Hooks.OnPositionOpened == nil {
+		return nil
+	}
 	b.Hooks.OnPositionOpened(pos, BuyTransactionInfo{
 		ComissiosSum: comission,
 		CashOutflow: cost,
@@ -110,7 +120,7 @@ func (b *Broker) closePosition(pos Position) {
 	b.Cash += SellInflow - comission
 
 	for i, p := range positions {
-		if p == pos {
+		if p.ID == pos.ID {
 			positions = sliceUtils.Remove(positions, i)
 			break
 		}
@@ -128,48 +138,63 @@ func (b *Broker) closePosition(pos Position) {
 			ComissiosSum: comission,
 		})
 	}
+	b.PortfolioData.Trades++
+	if SellInflow - comission > 0 {
+		b.PortfolioData.WinningTrades++
+	} else {
+		b.PortfolioData.LosingTrades++
+	}
 }
 
 func(b *Broker) Next() {
 	for s, positions := range b.Portfolio {
+		positions := append([]Position(nil), positions...)
 		for _, pos := range positions {
 			if pos.StopLossPrice >= b.CurrentData[s].Price{
-				fmt.Println("DDD", pos)
-				fmt.Println(b.CurrentData[s].Price)
 				b.closePosition(pos)
 			} else if pos.TakeProfitPrice <= b.CurrentData[s].Price {
 				b.closePosition(pos)
 			}
 		}
 	}
-	for ordIdx, ord := range b.Orders {
-		if ord.BuyPrice >= b.CurrentData[ord.Sym].Price {
-			err := b.openPosition(ord)
-			if err != nil {
-				b.Hooks.OnError(err)
+
+	for i := len(b.Orders)-1; i >= 0; i-- {
+		ord := b.Orders[i]
+
+		executed := false
+
+		if ord.Type == "MarketBuy" {
+			executed = true
+		} else if ord.Type == "Buy" && ord.BuyPrice >= b.CurrentData[ord.Sym].Price {
+			executed = true
+		}
+
+		if executed {
+			if err := b.openPosition(ord); err != nil {
+				if b.Hooks.OnError != nil {
+					b.Hooks.OnError(err)
+				}
 			}
-			b.Orders = sliceUtils.Remove(b.Orders, ordIdx)
-		} else if ord.Type == "MarketBuy" {
-			err := b.openPosition(ord)
-			if err != nil {
-				b.Hooks.OnError(err)
-			}
-			b.Orders = sliceUtils.Remove(b.Orders, ordIdx)
-		} else {
-			panic("invalid order type!")
+			b.Orders = sliceUtils.Remove(b.Orders, i)
 		}
 	}
-	b.Hooks.OnNext(CurrentSimulationData{
-		Portfolio: b.Portfolio,
-		Cash: b.Cash,
-		Orders: b.Orders,
-	})
+	if b.Hooks.OnNext != nil {
+		b.Hooks.OnNext(CurrentSimulationData{
+			Portfolio: b.Portfolio,
+			Cash: b.Cash,
+			Orders: b.Orders,
+		})
+	}
+	b.PortfolioData.PeakCash = max(b.PortfolioData.PeakCash, b.Cash)
+	drawdown := (b.PortfolioData.PeakCash - b.Cash) / b.PortfolioData.PeakCash
+	b.PortfolioData.MaxDD  = max(drawdown, b.PortfolioData.MaxDD)
 }
 
 func(b *Broker) Shutdown() {
-	for _, positions := range b.Portfolio {
+	for _, v := range b.Portfolio {
+		positions := append([]Position(nil), v...)
 		for _, pos := range positions {
-				b.closePosition(pos)
+			b.closePosition(pos)
 		}
 	}
 }
