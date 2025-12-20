@@ -5,7 +5,7 @@ type PortfolioData struct {
 	Trades int 
 	WinningTrades int
 	LosingTrades int
-	PeakCash float64
+	PeakEquity float64
 	MaxDD float64
 	EquitySnapshots []float64
 }

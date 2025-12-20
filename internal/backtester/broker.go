@@ -1,3 +1,6 @@
+/*	The 'Broker' type is the main part of the engine, keep track of most things
+*	state like positions, orderds, and more; also managing the metrics of the portfolio
+*/
 package backtester
 
 import (
@@ -5,30 +8,26 @@ import (
 	"go-backtesting-framework/internal/portfolioIndicators"
 	sliceUtils "go-backtesting-framework/internal/sliceUtils"
 )
-
-type SellTransactionInfo struct {
-	Price float64
-	CashInflow float64
-	ComissiosSum float64
+/* 		Error types 		*/
+type InvalidOrderTypeError struct {
+	Type string
+}
+func(i InvalidOrderTypeError) Error() string {
+	return fmt.Sprintf("Order type: %s is invalid", i.Type)
 }
 
-type BuyTransactionInfo struct {
-	CashOutflow float64
-	ComissiosSum float64
+type NotEnoughCashError struct {
+	Cost float64
+}
+func(n NotEnoughCashError) Error() string {
+	return fmt.Sprintf("Not enough cash to pay: %f", n.Cost)
 }
 
-type CurrentSimulationData struct {
-	Orders []Order
-	Portfolio map[Symbol][]Position
-	Cash float64
+type InvalidSymbolError struct {
+	SymbolGiven Symbol
 }
-
-type Hooks struct {
-	OnPositionClosed func(Position, SellTransactionInfo)
-	OnPositionOpened func(Position, BuyTransactionInfo)
-	OnOrderSubmitted func(Order)
-	OnNext func(CurrentSimulationData)
-	OnError func(error)
+func(i InvalidSymbolError) Error() string {
+	return fmt.Sprintf("Symbol: %s is invalid", i.SymbolGiven.Name)
 }
 
 type Broker struct {
@@ -36,12 +35,13 @@ type Broker struct {
 	Portfolio map[Symbol][]Position
 	Cash float64
 	Commisions Comissions
-	CurrentData map[Symbol]Candle
-	Hooks Hooks
-	nextPositionID int64
+	CurrentData map[Symbol]Candle // Maps any sumbol the its current candle
+	Hooks Hooks // Struct of function pointers to be called upon certain events
+	nextPositionID int
 	PortfolioData portfolioIndicators.PortfolioData
 }
 
+/* Look up all open positions for a given symbol  */
 func (b Broker) GetPositions(sym Symbol) ([]Position, bool){
 	retPos, f  := b.Portfolio[sym]
 	if !f {
@@ -50,6 +50,7 @@ func (b Broker) GetPositions(sym Symbol) ([]Position, bool){
 	return retPos, true
 }
 
+/* Look up all candles for a given symbol  */
 func (b Broker) lookUpSymbolCandle(sym Symbol) (Candle, bool) {
 	candle, f := b.CurrentData[sym]
 	if !f {
@@ -57,7 +58,7 @@ func (b Broker) lookUpSymbolCandle(sym Symbol) (Candle, bool) {
 	}
 	return candle, true
 }
-
+/* User faving function, used to send orders from the 'Eval' function */
 func (b *Broker) SubmitOrder(order Order) error {
 	var orderTypeValid bool
 	for _, v := range POSSIBLE_ORDER_TYPES {
@@ -91,7 +92,7 @@ func (b *Broker) openPosition(ord Order) error {
 	cost = cost + comission
 	pos.OpenPrice = price
 	if cost > b.Cash {
-		return fmt.Errorf("not enough cash")
+		return NotEnoughCashError{Cost: cost}
 	}
 	b.Cash -= cost
 	b.Portfolio[ord.Sym] = append(b.Portfolio[ord.Sym], pos)
@@ -108,12 +109,18 @@ func (b *Broker) openPosition(ord Order) error {
 func (b *Broker) closePosition(pos Position) {
 	positions, ok := b.Portfolio[pos.Sym]
 	if !ok {
-		panic("Invalid symbol in a position")
+		if b.Hooks.OnError != nil {
+			b.Hooks.OnError(InvalidSymbolError{SymbolGiven: pos.Sym})
+		}
+		return
 	}
 
 	candle, f := b.lookUpSymbolCandle(pos.Sym)
 	if !f {
-		panic("Invalid symbol in a position")
+		if b.Hooks.OnError != nil {
+			b.Hooks.OnError(InvalidSymbolError{SymbolGiven: pos.Sym})
+		}
+		return
 	}
 	SellInflow := candle.Price * pos.Size
 	comission := SellInflow * b.Commisions.SellComission
@@ -147,6 +154,7 @@ func (b *Broker) closePosition(pos Position) {
 }
 
 func(b *Broker) Next() {
+	equity := 0.0
 	for s, positions := range b.Portfolio {
 		positions := append([]Position(nil), positions...)
 		for _, pos := range positions {
@@ -156,13 +164,20 @@ func(b *Broker) Next() {
 				b.closePosition(pos)
 			}
 		}
+		for _, pos := range positions {
+			candle, f := b.lookUpSymbolCandle(pos.Sym)
+			if !f {
+				if b.Hooks.OnError != nil {
+					b.Hooks.OnError(InvalidSymbolError{SymbolGiven: pos.Sym})
+				}
+			}
+			equity += pos.Size * candle.Price
+		}
 	}
-
+	// TODO: Add more order types.
 	for i := len(b.Orders)-1; i >= 0; i-- {
 		ord := b.Orders[i]
-
 		executed := false
-
 		if ord.Type == "MarketBuy" {
 			executed = true
 		} else if ord.Type == "Buy" && ord.BuyPrice >= b.CurrentData[ord.Sym].Price {
@@ -178,6 +193,7 @@ func(b *Broker) Next() {
 			b.Orders = sliceUtils.Remove(b.Orders, i)
 		}
 	}
+	equity += b.Cash
 	if b.Hooks.OnNext != nil {
 		b.Hooks.OnNext(CurrentSimulationData{
 			Portfolio: b.Portfolio,
@@ -185,8 +201,8 @@ func(b *Broker) Next() {
 			Orders: b.Orders,
 		})
 	}
-	b.PortfolioData.PeakCash = max(b.PortfolioData.PeakCash, b.Cash)
-	drawdown := (b.PortfolioData.PeakCash - b.Cash) / b.PortfolioData.PeakCash
+	b.PortfolioData.PeakEquity = max(b.PortfolioData.PeakEquity, equity)
+	drawdown := (b.PortfolioData.PeakEquity - equity) / b.PortfolioData.PeakEquity
 	b.PortfolioData.MaxDD  = max(drawdown, b.PortfolioData.MaxDD)
 }
 

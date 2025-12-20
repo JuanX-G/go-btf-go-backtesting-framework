@@ -3,10 +3,9 @@ package indicators
 import (
 	"fmt"
 	tester "go-backtesting-framework/internal/backtester"
-	// "builtin"
 	"math"
 )
-
+//TODO: add error types
 func ATR(dt []tester.Candle, period, currIdx int) (float64, error) {
 	if period - 1 > len(dt) {
 		return 0, fmt.Errorf("period too big")

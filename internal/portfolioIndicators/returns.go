@@ -21,4 +21,3 @@ func(p *PortfolioData) WinRate() float64 {
 	return float64(p.WinningTrades) / float64(p.Trades)
 }
 
-//TODO: EXPECNATNCYQQQQoq	jioqejri9eji

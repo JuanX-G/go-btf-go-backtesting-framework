@@ -4,7 +4,7 @@ import (
 	"fmt"
 	tester "go-backtesting-framework/internal/backtester"
 )
-
+// TODO: add error types
 func SMA(dt []tester.Candle, period, currIdx int) (float64, error) {
 	 if period - 1 > len(dt) {
 		return 0, fmt.Errorf("period too big")
@@ -88,7 +88,6 @@ func(m MACDdata) PrettyString() string {
 }
 
 func MACD(dt []tester.Candle, shortPeriod, longPeriod, signalPeriod, currIdx int) (MACDdata, error) {
-
 	minBars := longPeriod + signalPeriod
 	if currIdx < minBars {
 		return MACDdata{}, fmt.Errorf("not enough data")
@@ -98,7 +97,6 @@ func MACD(dt []tester.Candle, shortPeriod, longPeriod, signalPeriod, currIdx int
 	alphaLong := 2.0 / (float64(longPeriod) + 1)
 	alphaSig := 2.0 / (float64(signalPeriod) + 1)
 
-	// Initialize EMAs using SMA
 	shortEMA, err := SMA(dt, shortPeriod, currIdx-longPeriod-signalPeriod)
 	if err != nil {
 		return MACDdata{}, err
@@ -110,9 +108,7 @@ func MACD(dt []tester.Candle, shortPeriod, longPeriod, signalPeriod, currIdx int
 	signal := 0.0
 
 	for i := currIdx - longPeriod - signalPeriod + 1; i <= currIdx; i++ {
-
 		price := dt[i].Close
-
 		shortEMA += alphaShort * (price - shortEMA)
 		longEMA  += alphaLong  * (price - longEMA)
 
@@ -122,7 +118,6 @@ func MACD(dt []tester.Candle, shortPeriod, longPeriod, signalPeriod, currIdx int
 
 	macd := shortEMA - longEMA
 	hist := macd - signal
-
 	return MACDdata{
 		ShortEma: shortEMA,
 		LongEma:  longEMA,
