@@ -1,4 +1,5 @@
-/*	The 'Broker' type is the main part of the engine, keep track of most things
+/*	
+* 	The 'Broker' type is the main part of the engine, keep track of most things
 *	state like positions, orderds, and more; also managing the metrics of the portfolio
 */
 package backtester
@@ -8,27 +9,6 @@ import (
 	"go-backtesting-framework/internal/portfolioIndicators"
 	sliceUtils "go-backtesting-framework/internal/sliceUtils"
 )
-/* 		Error types 		*/
-type InvalidOrderTypeError struct {
-	Type string
-}
-func(i InvalidOrderTypeError) Error() string {
-	return fmt.Sprintf("Order type: %s is invalid", i.Type)
-}
-
-type NotEnoughCashError struct {
-	Cost float64
-}
-func(n NotEnoughCashError) Error() string {
-	return fmt.Sprintf("Not enough cash to pay: %f", n.Cost)
-}
-
-type InvalidSymbolError struct {
-	SymbolGiven Symbol
-}
-func(i InvalidSymbolError) Error() string {
-	return fmt.Sprintf("Symbol: %s is invalid", i.SymbolGiven.Name)
-}
 
 type Broker struct {
 	Orders []Order
@@ -58,7 +38,7 @@ func (b Broker) lookUpSymbolCandle(sym Symbol) (Candle, bool) {
 	}
 	return candle, true
 }
-/* User faving function, used to send orders from the 'Eval' function */
+/* User facing function, used to send orders from the 'Eval' function */
 func (b *Broker) SubmitOrder(order Order) error {
 	var orderTypeValid bool
 	for _, v := range POSSIBLE_ORDER_TYPES {
