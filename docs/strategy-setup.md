@@ -7,7 +7,7 @@ You There you call the 'submitOrder' method of the broker (which you should keep
 
 #### The 'BrokerNext' Method 
 Here you feed new data into the broker by setting its 'CurrentData' field \
-You also check if you have reached end-of-data, if so you return false to stop the testing loop \ 
+You also check if you have reached end-of-data, if so you return false to stop the testing loop \
 Otherwise true should be returned to continue to the next "bar"
 
 #### The 'Initialize' Method
