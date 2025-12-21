@@ -8,8 +8,8 @@ import (
 )
 
 func loopWarpper(wg *sync.WaitGroup, s tester.Strategy ) {
+	defer wg.Done()
 	tester.TestLoopStart(s)
-	wg.Done()
 }
 
 type TestPool struct {
@@ -20,7 +20,7 @@ func(t TestPool) Run() {
 	var wg sync.WaitGroup
 	for _, s := range t.strategies {
 		wg.Add(1)
-		loopWarpper(&wg, s)
+		go loopWarpper(&wg, s)
 	}
 	wg.Wait()
 	fmt.Println("All testes finished")

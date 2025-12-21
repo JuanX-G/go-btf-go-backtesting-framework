@@ -1,6 +1,5 @@
 package backtester
 
-
 func TestLoopStart(strat Strategy) {
 	strat.Initialize()
 	defer strat.Shutdown()
