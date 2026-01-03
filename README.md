@@ -10,7 +10,7 @@ It is far from finished
     - Input the data to a datafeed using the datafeed module
     - Setup a strategy struct that fullfils the interface 'Strategy'
     - Get to testing
-#### Examples are provided in examples/
+#### Examples are provided in examples 
 
 ## Architecture
     - A engine that has the event loop

@@ -1,13 +1,14 @@
-/*	
+/*
 * 	The 'Broker' type is the main part of the engine, keep track of most things
 *	state like positions, orderds, and more; also managing the metrics of the portfolio
-*/
+ */
 package backtester
 
 import (
 	"fmt"
 	"go-backtesting-framework/internal/portfolioIndicators"
 	sliceUtils "go-backtesting-framework/internal/sliceUtils"
+	"math"
 )
 
 type Broker struct {
@@ -62,18 +63,30 @@ func (b *Broker) openPosition(ord Order) error {
 		Sym: ord.Sym,
 		TakeProfitPrice: ord.TakeProfitPrice,
 		StopLossPrice: ord.StopLossPrice,
-		Size: ord.Size,
 		ID: b.nextPositionID,
 	}
 	price := b.CurrentData[ord.Sym].Price
-	cost := ord.Size * price
+	cost := 0.0
+	if ord.Type == "MarketBuy" || ord.Type == "Buy" {
+		pos.Size = ord.Size
+	} else {
+		pos.Size = -ord.Size
+	}
+	cost = math.Abs(ord.Size) * price
 
-	comission := cost * b.Commisions.BuyComission
+	comission := 0.0
+
+	if pos.Size > 0 {
+		comission = cost * b.Commisions.BuyComission
+	} else {
+		comission = cost * b.Commisions.SellComission
+	}
 	cost = cost + comission
 	pos.OpenPrice = price
 	if cost > b.Cash {
 		return NotEnoughCashError{Cost: cost}
 	}
+
 	b.Cash -= cost
 	b.Portfolio[ord.Sym] = append(b.Portfolio[ord.Sym], pos)
 	if b.Hooks.OnPositionOpened == nil {
@@ -102,8 +115,13 @@ func (b *Broker) closePosition(pos Position) {
 		}
 		return
 	}
-	SellInflow := candle.Price * pos.Size
-	comission := SellInflow * b.Commisions.SellComission
+	SellInflow := candle.Price * math.Abs(pos.Size)
+	comission := 0.0
+	if pos.Size > 0 {
+		comission = SellInflow * b.Commisions.SellComission
+	} else {
+		comission = SellInflow * b.Commisions.BuyComission
+	}
 	b.Cash += SellInflow - comission
 
 	for i, p := range positions {
@@ -125,8 +143,20 @@ func (b *Broker) closePosition(pos Position) {
 			ComissiosSum: comission,
 		})
 	}
-	b.PortfolioData.Trades++
-	if SellInflow - comission > 0 {
+
+	entryValue := pos.OpenPrice * math.Abs(pos.Size)
+	exitValue  := candle.Price * math.Abs(pos.Size)
+
+	sgn := 0.0
+	if pos.Size > 0 {
+		sgn = 1
+	} else {
+		sgn = -1
+	}
+	pnl := (exitValue - entryValue) * sgn
+	pnl -= (comission)
+
+	if pnl > 0 { 
 		b.PortfolioData.WinningTrades++
 	} else {
 		b.PortfolioData.LosingTrades++
@@ -138,10 +168,18 @@ func(b *Broker) Next() {
 	for s, positions := range b.Portfolio {
 		positions := append([]Position(nil), positions...)
 		for _, pos := range positions {
-			if pos.StopLossPrice >= b.CurrentData[s].Price{
-				b.closePosition(pos)
-			} else if pos.TakeProfitPrice <= b.CurrentData[s].Price {
-				b.closePosition(pos)
+			isLong := pos.Size > 0
+			//TODO: fix 0 tp/sl
+			price := b.CurrentData[s].Price
+
+			if isLong {
+				if price <= pos.StopLossPrice || price >= pos.TakeProfitPrice {
+					b.closePosition(pos)
+				}
+			} else {
+				if price >= pos.StopLossPrice || price <= pos.TakeProfitPrice {
+					b.closePosition(pos)
+				}
 			}
 		}
 		for _, pos := range positions {
@@ -151,20 +189,32 @@ func(b *Broker) Next() {
 					b.Hooks.OnError(InvalidSymbolError{SymbolGiven: pos.Sym})
 				}
 			}
+			//TODO decide if we want negatives here
 			equity += pos.Size * candle.Price
 		}
 	}
-	// TODO: Add more order types.
 	for i := len(b.Orders)-1; i >= 0; i-- {
 		ord := b.Orders[i]
-		executed := false
+		executedShort := false
+		executedLong := false
 		if ord.Type == "MarketBuy" {
-			executed = true
+			executedLong = true
 		} else if ord.Type == "Buy" && ord.BuyPrice >= b.CurrentData[ord.Sym].Price {
-			executed = true
+			executedLong = true
+		} else if ord.Type == "MarketSell"   {
+			executedShort = true
+		} else if ord.Type == "Sell" && ord.BuyPrice <= b.CurrentData[ord.Sym].Price  {
+			executedShort = true
 		}
 
-		if executed {
+		if executedLong {
+			if err := b.openPosition(ord); err != nil {
+				if b.Hooks.OnError != nil {
+					b.Hooks.OnError(err)
+				}
+			}
+			b.Orders = sliceUtils.Remove(b.Orders, i)
+		} else if executedShort {
 			if err := b.openPosition(ord); err != nil {
 				if b.Hooks.OnError != nil {
 					b.Hooks.OnError(err)

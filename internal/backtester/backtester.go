@@ -3,10 +3,8 @@ package backtester
 func TestLoopStart(strat Strategy) {
 	strat.Initialize()
 	defer strat.Shutdown()
-	var s bool
-	for s {
+	for  strat.BrokerNext() {
 		strat.Eval()
-		s = strat.BrokerNext()
 	}
 }
 
