@@ -155,7 +155,7 @@ func (b *Broker) closePosition(pos Position) {
 	}
 	pnl := (exitValue - entryValue) * sgn
 	pnl -= (comission)
-
+	b.PortfolioData.Trades++
 	if pnl > 0 { 
 		b.PortfolioData.WinningTrades++
 	} else {
@@ -190,7 +190,7 @@ func(b *Broker) Next() {
 				}
 			}
 			//TODO decide if we want negatives here
-			equity += pos.Size * candle.Price
+			equity += math.Abs(pos.Size) * candle.Price
 		}
 	}
 	for i := len(b.Orders)-1; i >= 0; i-- {
