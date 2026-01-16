@@ -4,14 +4,15 @@ import (
 	"fmt"
 	tester "go-backtesting-framework/internal/backtester"
 )
+
 // TODO: add error types
 func SMA(dt []tester.Candle, period, currIdx int) (float64, error) {
 	 if period - 1 > len(dt) {
 		return 0, fmt.Errorf("period too big")
 	}
 	runningTotal := 0.0
-	for i := 0; i <= period; i++ {
-		runningTotal += dt[currIdx - i].Price
+	for i := currIdx - period + 1; i <= currIdx; i++ {
+		runningTotal += dt[i].Price
 	}
 	avg := runningTotal / float64(period)
 	return avg, nil
@@ -34,7 +35,7 @@ func EMA(dt []tester.Candle, period, currIdx int) (float64, error){
 	if currIdx < period {
 		return 0, fmt.Errorf("period too big")
 	}
-	multiplier := 2/(period + 1)
+	multiplier := 2.0 / (float64(period) + 1)
 	var prevEma float64
 	itrc := 0
 
@@ -55,7 +56,7 @@ func EMA(dt []tester.Candle, period, currIdx int) (float64, error){
 }
 
 func RawEMA(dt []float64) (float64, error) {
-	multiplier := 2/(len(dt)+ 1)
+	multiplier := 2.0 / (float64(len(dt)) + 1)
 	var prevEma float64
 	itrc := 0
 	for _, v := range dt {
