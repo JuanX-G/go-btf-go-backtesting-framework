@@ -12,6 +12,7 @@ import (
 )
 
 type Broker struct {
+	Datafeed DataFeed
 	Orders []Order
 	Portfolio map[Symbol][]Position
 	Cash float64
@@ -95,7 +96,7 @@ func (b *Broker) openPosition(ord Order) error {
 	b.Hooks.OnPositionOpened(pos, BuyTransactionInfo{
 		ComissiosSum: comission,
 		CashOutflow: cost,
-	})
+	}) 
 	return nil
 }
 
@@ -163,23 +164,19 @@ func (b *Broker) closePosition(pos Position) {
 	}
 }
 
-func(b *Broker) Next() {
+func(b *Broker) Next() bool {
+	var ok bool
+	b.CurrentData, ok = b.Datafeed.Next()
+	if !ok {
+		return false
+	}
 	equity := 0.0
 	for s, positions := range b.Portfolio {
 		positions := append([]Position(nil), positions...)
+		candle := b.CurrentData[s]
 		for _, pos := range positions {
-			isLong := pos.Size > 0
-			//TODO: fix 0 tp/sl
-			price := b.CurrentData[s].Price
-
-			if isLong {
-				if price <= pos.StopLossPrice || price >= pos.TakeProfitPrice {
-					b.closePosition(pos)
-				}
-			} else {
-				if price >= pos.StopLossPrice || price <= pos.TakeProfitPrice {
-					b.closePosition(pos)
-				}
+			if b.checkTPSL(pos, candle) {
+				continue
 			}
 		}
 		for _, pos := range positions {
@@ -189,8 +186,7 @@ func(b *Broker) Next() {
 					b.Hooks.OnError(InvalidSymbolError{SymbolGiven: pos.Sym})
 				}
 			}
-			//TODO decide if we want negatives here
-			equity += math.Abs(pos.Size) * candle.Price
+			equity += (candle.Price - pos.OpenPrice) * math.Abs(pos.Size)
 		}
 	}
 	for i := len(b.Orders)-1; i >= 0; i-- {
@@ -231,9 +227,11 @@ func(b *Broker) Next() {
 			Orders: b.Orders,
 		})
 	}
+	b.PortfolioData.EquitySnapshots = append(b.PortfolioData.EquitySnapshots, equity)
 	b.PortfolioData.PeakEquity = max(b.PortfolioData.PeakEquity, equity)
 	drawdown := (b.PortfolioData.PeakEquity - equity) / b.PortfolioData.PeakEquity
 	b.PortfolioData.MaxDD  = max(drawdown, b.PortfolioData.MaxDD)
+	return true
 }
 
 func(b *Broker) Shutdown() {
@@ -244,3 +242,86 @@ func(b *Broker) Shutdown() {
 		}
 	}
 }
+
+func (b *Broker) checkTPSL(pos Position, candle Candle) bool {
+    isLong := pos.Size > 0
+
+    if isLong {
+        if pos.HasSL && candle.Low <= pos.StopLossPrice {
+            b.closePositionAt(pos, pos.StopLossPrice * (1 - b.Commisions.SellSlippage))
+            return true
+        }
+        if pos.HasTP && candle.High >= pos.TakeProfitPrice {
+            b.closePositionAt(pos, pos.TakeProfitPrice * (1 - b.Commisions.SellSlippage))
+            return true
+        }
+    } else {
+        if pos.HasSL && candle.High >= pos.StopLossPrice {
+            b.closePositionAt(pos, pos.StopLossPrice * (1 + b.Commisions.BuySlippage))
+            return true
+        }
+        if pos.HasTP && candle.Low <= pos.TakeProfitPrice {
+            b.closePositionAt(pos, pos.TakeProfitPrice * (1 + b.Commisions.BuySlippage))
+            return true
+        }
+    }
+    return false
+}
+func (b *Broker) closePositionAt(pos Position, price float64) {
+	positions, ok := b.Portfolio[pos.Sym]
+	if !ok {
+		if b.Hooks.OnError != nil {
+			b.Hooks.OnError(InvalidSymbolError{SymbolGiven: pos.Sym})
+		}
+		return
+	}
+
+	SellInflow := price * math.Abs(pos.Size)
+	comission := 0.0
+	if pos.Size > 0 {
+		comission = SellInflow * b.Commisions.SellComission
+	} else {
+		comission = SellInflow * b.Commisions.BuyComission
+	}
+	b.Cash += SellInflow - comission
+
+	for i, p := range positions {
+		if p.ID == pos.ID {
+			positions = sliceUtils.Remove(positions, i)
+			break
+		}
+	}
+
+	if len(positions) == 0 {
+		delete(b.Portfolio, pos.Sym)
+	} else {
+		b.Portfolio[pos.Sym] = positions
+	}
+	if b.Hooks.OnPositionClosed != nil {
+		b.Hooks.OnPositionClosed(pos, SellTransactionInfo{
+			Price: price,
+			CashInflow: SellInflow,
+			ComissiosSum: comission,
+		})
+	}
+
+	entryValue := pos.OpenPrice * math.Abs(pos.Size)
+	exitValue  := price * math.Abs(pos.Size)
+
+	sgn := 0.0
+	if pos.Size > 0 {
+		sgn = 1
+	} else {
+		sgn = -1
+	}
+	pnl := (exitValue - entryValue) * sgn
+	pnl -= (comission)
+	b.PortfolioData.Trades++
+	if pnl > 0 { 
+		b.PortfolioData.WinningTrades++
+	} else {
+		b.PortfolioData.LosingTrades++
+	}
+}
+
+

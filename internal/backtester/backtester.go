@@ -26,6 +26,8 @@ type Strategy interface {
 type Comissions struct {
 	BuyComission float64
 	SellComission float64
+	BuySlippage float64
+	SellSlippage float64
 }
 
 var POSSIBLE_ORDER_TYPES = []string{"Buy", "Sell", "MarketBuy", "MarketSell"}
@@ -36,6 +38,8 @@ type Position struct {
 	StopLossPrice float64
 	TakeProfitPrice float64
 	Size float64
+	HasSL bool
+	HasTP bool
 	ID int
 }
 

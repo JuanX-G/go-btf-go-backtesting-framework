@@ -2,11 +2,48 @@ package datafeed
 
 import (
 	"encoding/csv"
+	"fmt"
 	tester "go-backtesting-framework/internal/backtester"
 	"os"
 	"strconv"
 )
 
+type BasicDatafeed struct {
+	data map[tester.Symbol][]tester.Candle
+	idx int
+}
+
+func NewDatafeedFromFiles(fileNames []string, symNames []string) (*BasicDatafeed, error) {
+	datafeed := BasicDatafeed{idx: 0}
+	if len(fileNames) != len(symNames) {
+		return nil, fmt.Errorf("mismatched filenames length with symNames length")
+	}
+	for idx, fname := range fileNames {
+		dt, err := LoadCandleData(fname)
+		if err != nil {
+			return nil, err
+		}
+		currSym := tester.Symbol{Name: symNames[idx]}
+		datafeed.data[currSym] = dt
+	}
+	return &datafeed, nil
+}
+
+func(b *BasicDatafeed) Next() (map[tester.Symbol]tester.Candle, bool) {
+	b.idx++
+	retMap := make(map[tester.Symbol]tester.Candle)
+	for sym, candles := range b.data {
+		if b.idx >= len(candles) {
+			return nil, false
+		}
+		retMap[sym] = candles[b.idx]
+	}
+	return retMap, true
+}
+
+func(b *BasicDatafeed) Reset() {
+	b.idx = 0
+}
 func LoadCandleData(fileName string) ([]tester.Candle, error) {
 	file, err := os.Open(fileName)
 	if err != nil {
